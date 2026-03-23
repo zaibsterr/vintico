@@ -1,50 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-// Server-side Supabase client using Service Role Key
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+let supabase: SupabaseClient | null = null;
+
+function getSupabase() {
+  if (!supabase) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
+      console.error("Supabase environment variables missing");
+      return null;
+    }
+    supabase = createClient(url, key);
+  }
+  return supabase;
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
-    if (!body || !body.data) {
-      console.error("Webhook payload missing or invalid:", body);
-      return NextResponse.json({ success: false, error: "Invalid payload" });
-    }
-
     const user = body.data;
+    const client = getSupabase();
+    if (!client) return NextResponse.json({ success: false, error: "Supabase not initialized" });
 
-    // Extract email safely
     const email = user.email_addresses?.[0]?.email_address;
-    if (!email) {
-      console.error("User email missing:", user);
-      return NextResponse.json({ success: false, error: "Email missing" });
-    }
+    if (!email) return NextResponse.json({ success: false, error: "Email missing" });
 
-    console.log("Webhook triggered for user:", user.id);
-    console.log("User email:", email);
-
-    // Insert into Supabase
-    const { data, error } = await supabase
-      .from("users")
-      .insert([
-        {
-          clerk_id: user.id,
-          email: email,
-        },
-      ])
-      .select(); // select() returns inserted row
+    const { data, error } = await client.from("users").insert([
+      { clerk_id: user.id, email },
+    ]).select();
 
     if (error) {
       console.error("Supabase insert error:", error);
       return NextResponse.json({ success: false, error: error.message });
     }
-
-    console.log("Supabase insert success:", data);
 
     return NextResponse.json({ success: true, data });
   } catch (err) {
