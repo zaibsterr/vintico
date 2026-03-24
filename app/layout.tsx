@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import BotGate from "@/components/common/BotGate";
 import "./globals.css";
 
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vintico — Intelligent Insurance & Business Platform",
+  title: "Vintico Digital Hub",
   description:
     "Vintico unifies quote management, compliance monitoring, leave tracking, cybersecurity alerts, and business analytics into one powerful dashboard.",
 };
@@ -35,6 +36,7 @@ export default function RootLayout({
       >
         <body className="min-h-full flex flex-col">
           <BotGate>{children}</BotGate>
+          <Toaster richColors position="top-right" />
         </body>
       </html>
     </ClerkProvider>

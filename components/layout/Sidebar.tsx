@@ -53,11 +53,15 @@ export default function Sidebar() {
       <div className="flex flex-col flex-1 min-h-0">
         {/* Logo */}
         <div className="flex items-center h-16 px-6">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">V</span>
+          <Link href="/dashboard" className="flex items-center gap-2.5 group">
+            <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 via-violet-600 to-emerald-500 shadow-md shadow-violet-500/20 transition-transform duration-200 group-hover:scale-105">
+              <span className="text-white font-extrabold text-sm leading-none tracking-tighter select-none">V</span>
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-white/20 to-transparent pointer-events-none" />
             </div>
-            <span className="text-lg font-bold tracking-tight">Vintico</span>
+            <div className="flex flex-col leading-none">
+              <span className="text-sm font-bold tracking-tight">Vintico</span>
+              <span className="text-[9px] font-semibold tracking-widest uppercase text-muted-foreground/70">Digital Hub</span>
+            </div>
           </Link>
         </div>
 

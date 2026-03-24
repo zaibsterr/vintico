@@ -2,77 +2,193 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSupabase } from "@/lib/useSupabase";
-import { ShieldCheck, Plus } from "lucide-react";
+import { ShieldCheck, Sparkles } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import PDFExportButton from "@/components/common/PDFExportButton";
-import type { DistillRecord } from "@/types";
+import { toast } from "sonner";
+
+// ── Lightweight extractive summarization ───────────────────────
+const BUSINESS_KEYWORDS = [
+  "revenue", "profit", "growth", "risk", "compliance", "strategy",
+  "customer", "market", "performance", "target", "deadline", "budget",
+  "report", "analysis", "critical", "important", "significant",
+  "increase", "decrease", "impact", "result", "outcome", "key",
+  "decision", "recommend", "action", "priority", "objective",
+];
+
+function splitSentences(text: string): string[] {
+  return text
+    .replace(/([.!?])\s+/g, "$1|")
+    .split("|")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 10);
+}
+
+function scoreSentence(sentence: string, index: number, total: number): number {
+  const lower = sentence.toLowerCase();
+  let score = 0;
+  if (index === 0) score += 3;
+  if (index === total - 1) score += 1;
+  if (index < 3) score += 2;
+  for (const kw of BUSINESS_KEYWORDS) {
+    if (lower.includes(kw)) score += 1;
+  }
+  const wordCount = sentence.split(/\s+/).length;
+  if (wordCount >= 8 && wordCount <= 35) score += 1;
+  return score;
+}
+
+function extractSummary(text: string): string[] {
+  const sentences = splitSentences(text);
+  if (sentences.length <= 6) return sentences;
+
+  const scored = sentences.map((s, i) => ({
+    sentence: s,
+    index: i,
+    score: scoreSentence(s, i, sentences.length),
+  }));
+
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored.slice(0, Math.min(6, Math.max(4, Math.ceil(sentences.length * 0.3))));
+  top.sort((a, b) => a.index - b.index);
+
+  return top.map((t) => t.sentence);
+}
+
+// ── Types ──────────────────────────────────────────────────────
+interface DistillEntry {
+  id: string;
+  originalText: string;
+  summary: string;
+  createdAt: string;
+}
 
 export default function DistillGuardPage() {
   const { getDb, userId } = useSupabase();
-  const [records, setRecords] = useState<DistillRecord[]>([]);
+  const [history, setHistory] = useState<DistillEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ entityName: "", licenseNumber: "", expiryDate: "" });
+  const [processing, setProcessing] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [currentSummary, setCurrentSummary] = useState<string[] | null>(null);
 
-  const fetch_ = useCallback(async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const db = await getDb();
       if (!db) return;
-      const { data } = await db.from("distillations").select("*").order("created_at", { ascending: false });
-      setRecords((data ?? []).map((r: Record<string, unknown>) => ({
-        id: r.id as string,
-        entityName: r.entity_name as string,
-        licenseNumber: r.license_number as string,
-        expiryDate: r.expiry_date as string,
-        complianceStatus: r.compliance_status as DistillRecord["complianceStatus"],
-        lastChecked: r.last_checked as string,
-      })));
-    } catch { /* empty */ } finally { setLoading(false); }
+      const { data } = await db
+        .from("distillations")
+        .select("*")
+        .order("created_at", { ascending: false });
+      setHistory(
+        (data ?? []).map((r: Record<string, unknown>) => ({
+          id: r.id as string,
+          originalText: r.original_text as string,
+          summary: r.summary as string,
+          createdAt: r.created_at as string,
+        }))
+      );
+    } catch {
+      /* table may not exist yet */
+    } finally {
+      setLoading(false);
+    }
   }, [getDb]);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
-  const add = async () => {
-    if (!form.entityName || !form.licenseNumber || !form.expiryDate) return;
+  const handleDistill = async () => {
+    const trimmed = inputText.trim();
+    if (!trimmed) {
+      toast.error("Please enter some text to distill");
+      return;
+    }
+    if (trimmed.length < 50) {
+      toast.error("Text must be at least 50 characters long");
+      return;
+    }
+
+    setProcessing(true);
     try {
+      const sentences = extractSummary(trimmed);
+      const summaryText = sentences.join(" ");
+
+      setCurrentSummary(sentences);
+
       const db = await getDb();
-      if (!db) return;
-      const expiry = new Date(form.expiryDate);
-      const now = new Date();
-      const diff = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-      const status = diff < 0 ? "expired" : diff < 30 ? "warning" : "compliant";
-      await db.from("distillations").insert({
-        user_id: userId, entity_name: form.entityName,
-        license_number: form.licenseNumber, expiry_date: form.expiryDate,
-        compliance_status: status, last_checked: new Date().toISOString(),
-      });
-      setForm({ entityName: "", licenseNumber: "", expiryDate: "" });
-      setShowForm(false);
-      fetch_();
-    } catch { /* */ }
+      if (db) {
+        await db.from("distillations").insert({
+          user_id: userId,
+          original_text: trimmed,
+          summary: summaryText,
+        });
+        fetchHistory();
+      }
+
+      toast.success("Summary generated successfully");
+    } catch {
+      toast.error("Failed to generate summary");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const exportPDF = async () => {
     const jsPDF = (await import("jspdf")).default;
     await import("jspdf-autotable");
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Distill Guard — Compliance Report", 14, 20);
+
+    doc.setFontSize(18);
+    doc.text("Distillation Report", 14, 20);
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
-    (doc as unknown as Record<string, Function>).autoTable({
-      startY: 35,
-      head: [["Entity", "License #", "Expiry", "Status", "Last Checked"]],
-      body: records.map((r) => [r.entityName, r.licenseNumber, r.expiryDate, r.complianceStatus, r.lastChecked?.split("T")[0] || "—"]),
+
+    let yPos = 38;
+
+    history.forEach((entry, idx) => {
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Entry ${idx + 1} — ${new Date(entry.createdAt).toLocaleDateString()}`, 14, yPos);
+      yPos += 8;
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text("Original Text:", 14, yPos);
+      yPos += 5;
+
+      const preview = entry.originalText.length > 300
+        ? entry.originalText.slice(0, 300) + "…"
+        : entry.originalText;
+      const origLines = doc.splitTextToSize(preview, 180);
+      doc.text(origLines, 14, yPos);
+      yPos += origLines.length * 4 + 4;
+
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Summary:", 14, yPos);
+      yPos += 5;
+      doc.setFont("helvetica", "normal");
+      const sumLines = doc.splitTextToSize(entry.summary, 180);
+      doc.text(sumLines, 14, yPos);
+      yPos += sumLines.length * 4 + 10;
     });
-    doc.save("distill-guard-report.pdf");
+
+    doc.save("distillation-report.pdf");
   };
 
   return (
@@ -83,47 +199,98 @@ export default function DistillGuardPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Distill Guard</h1>
-          <p className="text-sm text-muted-foreground">Compliance monitoring & license tracking.</p>
+          <p className="text-sm text-muted-foreground">
+            Paste text to generate a clean, distilled summary.
+          </p>
         </div>
         <Badge variant="secondary" className="ml-auto">Module Active</Badge>
       </div>
 
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-1" /> Add Record</Button>
-        <PDFExportButton onClick={exportPDF} disabled={records.length === 0} />
+        <PDFExportButton onClick={exportPDF} disabled={history.length === 0} />
       </div>
 
-      {showForm && (
+      {/* Input Area */}
+      <Card>
+        <CardHeader>
+          <CardTitle>New Distillation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Paste your text below *</Label>
+            <Textarea
+              rows={8}
+              placeholder="Paste a long document, article, or report here (min. 50 characters)…"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {inputText.length} characters
+            </p>
+          </div>
+          <Button onClick={handleDistill} disabled={processing}>
+            <Sparkles className="h-4 w-4 mr-1" />
+            {processing ? "Processing…" : "Distill"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Current Summary Output */}
+      {currentSummary && (
         <Card>
-          <CardContent className="pt-6 grid gap-4 sm:grid-cols-3">
-            <div><Label>Entity Name</Label><Input value={form.entityName} onChange={(e) => setForm({ ...form, entityName: e.target.value })} /></div>
-            <div><Label>License Number</Label><Input value={form.licenseNumber} onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })} /></div>
-            <div><Label>Expiry Date</Label><Input type="date" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} /></div>
-            <div className="sm:col-span-3"><Button onClick={add}>Save Record</Button></div>
+          <CardHeader>
+            <CardTitle>Distilled Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {currentSummary.map((sentence, idx) => (
+              <p key={idx} className={idx === 0 ? "font-semibold" : ""}>
+                {sentence}
+              </p>
+            ))}
           </CardContent>
         </Card>
       )}
 
+      <Separator />
+
+      {/* History */}
       <Card>
-        <CardHeader><CardTitle>Compliance Records ({records.length})</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>History ({history.length})</CardTitle>
+        </CardHeader>
         <CardContent>
-          {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : records.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No records yet. Click &quot;Add Record&quot; to create one.</p>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No distillations yet — paste your first text to generate a summary.
+            </p>
           ) : (
-            <Table>
-              <TableHeader><TableRow><TableHead>Entity</TableHead><TableHead>License #</TableHead><TableHead>Expiry</TableHead><TableHead>Status</TableHead><TableHead>Last Checked</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {records.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.entityName}</TableCell>
-                    <TableCell>{r.licenseNumber}</TableCell>
-                    <TableCell>{r.expiryDate}</TableCell>
-                    <TableCell><Badge variant={r.complianceStatus === "compliant" ? "default" : r.complianceStatus === "expired" ? "destructive" : "secondary"}>{r.complianceStatus}</Badge></TableCell>
-                    <TableCell>{r.lastChecked?.split("T")[0] || "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="space-y-4">
+              {history.map((entry) => (
+                <Card key={entry.id} className="border">
+                  <CardContent className="pt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary">
+                        {new Date(entry.createdAt).toLocaleDateString()}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Original (preview)</p>
+                      <p className="text-sm">
+                        {entry.originalText.length > 200
+                          ? entry.originalText.slice(0, 200) + "…"
+                          : entry.originalText}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Summary</p>
+                      <p className="text-sm font-medium">{entry.summary}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
