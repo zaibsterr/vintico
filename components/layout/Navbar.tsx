@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { Bell } from "lucide-react";
+import { Bell, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -27,6 +28,12 @@ export default function Navbar() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="rounded-lg hover:bg-accent/60 transition-colors gap-1.5" asChild>
+            <Link href="/dashboard/pricing">
+              <CreditCard className="h-4 w-4" />
+              <span className="hidden sm:inline text-sm font-medium">Pricing</span>
+            </Link>
+          </Button>
           <Button variant="ghost" size="icon" className="relative rounded-lg hover:bg-accent/60 transition-colors">
             <Bell className="h-4 w-4" />
           </Button>

@@ -172,7 +172,7 @@ export default function AnimatedStats() {
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-gradient-to-br from-violet-400/10 via-blue-400/10 to-transparent blur-3xl" />
       </div>
-      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-14 sm:py-24">
         <div className="text-center mb-14">
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Built for scale, loved by teams

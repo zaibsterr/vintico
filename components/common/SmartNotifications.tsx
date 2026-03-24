@@ -87,7 +87,7 @@ export default function SmartNotifications() {
 
   return (
     <section ref={sectionRef} className="border-t bg-muted/20">
-      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-14 sm:py-24">
         <div className="grid gap-14 lg:grid-cols-2 lg:items-center">
           {/* Left — Illustrated notification panel */}
           <div className="relative">
@@ -187,7 +187,7 @@ export default function SmartNotifications() {
 
             {/* Floating badge */}
             <div
-              className={`absolute -top-3 -left-3 rounded-xl border bg-card px-3.5 py-2 shadow-lg flex items-center gap-2 transition-all duration-500 ${
+              className={`absolute -top-3 left-0 sm:-left-3 rounded-xl border bg-card px-3.5 py-2 shadow-lg flex items-center gap-2 transition-all duration-500 ${
                 visible
                   ? "opacity-100 translate-y-0 scale-100"
                   : "opacity-0 -translate-y-2 scale-95"
@@ -204,7 +204,7 @@ export default function SmartNotifications() {
 
             {/* Floating priority tag */}
             <div
-              className={`absolute -bottom-3 -right-3 rounded-xl border bg-card px-3.5 py-2 shadow-lg flex items-center gap-2 transition-all duration-500 ${
+              className={`absolute -bottom-3 right-0 sm:-right-3 rounded-xl border bg-card px-3.5 py-2 shadow-lg flex items-center gap-2 transition-all duration-500 ${
                 visible
                   ? "opacity-100 translate-y-0 scale-100"
                   : "opacity-0 translate-y-2 scale-95"
