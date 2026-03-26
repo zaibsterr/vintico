@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSupabase } from "@/lib/useSupabase";
+import { useAuth } from "@clerk/nextjs";
 import { FileText, Plus, Send, CreditCard } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,23 +26,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import PDFExportButton from "@/components/common/PDFExportButton";
+import CreditPopup from "@/components/common/CreditPopup";
 import { toast } from "sonner";
-import UpgradePopup from "@/components/common/UpgradePopup";
-import type { Quote } from "@/types";
-
-const MAX_CREDITS = 3;
+import { useCredits } from "@/hooks/useCredits";
+import { createQuote, getUserQuotes, Quote } from "@/lib/quotes";
+import { logActivity } from "@/lib/activity";
 
 function buildDefaultMessage(name: string, amount: string) {
   return `Hi ${name || "[Customer]"}, here is your quote for $${amount || "0"}. Please review and reply to confirm. Thank you!`;
 }
 
 export default function QuoteNudgePage() {
-  const { getDb, userId } = useSupabase();
+  const { userId, getToken } = useAuth();
+  const { credits, loading: creditsLoading, checkCredits, useCredit, refreshCredits } = useCredits();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [sending, setSending] = useState(false);
-  const [creditsUsed, setCreditsUsed] = useState(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [form, setForm] = useState({
     customerName: "",
@@ -51,56 +51,25 @@ export default function QuoteNudgePage() {
     message: "",
   });
 
-  const remaining = MAX_CREDITS - creditsUsed;
-
-  const fetchCredits = useCallback(async () => {
-    try {
-      const db = await getDb();
-      if (!db || !userId) return;
-      const { data } = await db
-        .from("user_profiles")
-        .select("sms_credits_used")
-        .eq("user_id", userId)
-        .single();
-      const used = data?.sms_credits_used ?? 0;
-      setCreditsUsed(used);
-    } catch {
-      setCreditsUsed(0);
-    }
-  }, [getDb, userId]);
-
   const fetchQuotes = useCallback(async () => {
+    if (!userId) return;
+    
     try {
-      const db = await getDb();
-      if (!db) return;
-      const { data } = await db
-        .from("quotes")
-        .select("*")
-        .order("created_at", { ascending: false });
-      setQuotes(
-        (data ?? []).map((r: Record<string, unknown>) => ({
-          id: r.id as string,
-          clientName: (r.customer_name ?? r.client_name) as string,
-          product: (r.product ?? "") as string,
-          premium: (r.amount ?? r.premium) as number,
-          status: r.status as Quote["status"],
-          createdAt: r.created_at as string,
-          followUpDate: r.follow_up_date as string | undefined,
-          phone: r.phone as string | undefined,
-          message: r.message as string | undefined,
-        }))
-      );
-    } catch {
-      /* table may not exist yet — show empty */
+      const token = await getToken();
+      if (!token) return;
+      
+      const quotesData = await getUserQuotes(token, userId);
+      setQuotes(quotesData);
+    } catch (error) {
+      console.error('Error fetching quotes:', error);
     } finally {
       setLoading(false);
     }
-  }, [getDb]);
+  }, [userId, getToken]);
 
   useEffect(() => {
     fetchQuotes();
-    fetchCredits();
-  }, [fetchQuotes, fetchCredits]);
+  }, [fetchQuotes]);
 
   const updateFormField = (field: string, value: string) => {
     const next = { ...form, [field]: value };
@@ -130,13 +99,21 @@ export default function QuoteNudgePage() {
       return;
     }
 
-    if (remaining <= 0) {
+    if (!userId) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    // Step 1: Check Credits (STRICT)
+    const canProceed = await checkCredits();
+    if (!canProceed) {
       setShowCreditModal(true);
       return;
     }
 
     setSending(true);
     try {
+      // Step 2: Send SMS using Twilio
       const res = await fetch("/api/sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -148,9 +125,9 @@ export default function QuoteNudgePage() {
 
       const result = await res.json();
 
+      // EDGE CASE: If Twilio fails, do NOT deduct credit
       if (!res.ok) {
         if (res.status === 402) {
-          setCreditsUsed(MAX_CREDITS);
           setShowCreditModal(true);
           return;
         }
@@ -158,30 +135,41 @@ export default function QuoteNudgePage() {
         return;
       }
 
-      const db = await getDb();
-      if (db) {
-        await db.from("quotes").insert({
-          user_id: userId,
-          customer_name: form.customerName.trim(),
-          phone: form.phone.trim(),
-          amount: Number(form.amount),
-          message: form.message,
-          status: "sent",
-        });
+      // Step 3: Insert into quotes table
+      const token = await getToken();
+      if (!token) {
+        toast.error("Authentication error");
+        return;
       }
 
-      const newUsed = result.credits_used ?? creditsUsed + 1;
-      setCreditsUsed(newUsed);
+      const quote = await createQuote(
+        token,
+        userId,
+        form.customerName.trim(),
+        form.phone.trim(),
+        Number(form.amount),
+        form.message
+      );
+
+      if (!quote) {
+        toast.error("Failed to save quote");
+        return;
+      }
+
+      // Step 4: Deduct Credit
+      const creditDeducted = await useCredit();
+      if (!creditDeducted) {
+        console.error("Failed to deduct credit");
+      }
+
+      // Step 5: Log Activity
+      await logActivity(token, userId, "Quote SMS Sent");
 
       toast.success("Quote sent successfully");
 
       resetForm();
       setShowForm(false);
       fetchQuotes();
-
-      if (MAX_CREDITS - newUsed <= 0) {
-        setShowCreditModal(true);
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "SMS send failed";
       toast.error(msg);
@@ -204,16 +192,16 @@ export default function QuoteNudgePage() {
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
 
     const rows = quotes.map((q) => [
-      q.clientName,
-      q.product,
-      `$${q.premium}`,
+      q.customer_name,
+      "Insurance",
+      `$${q.amount}`,
       q.status,
-      q.followUpDate || "—",
+      q.created_at,
     ]);
 
     (doc as unknown as Record<string, Function>).autoTable({
       startY: 35,
-      head: [["Client", "Product", "Premium", "Status", "Follow-up"]],
+      head: [["Client", "Product", "Premium", "Status", "Date"]],
       body: rows,
     });
     doc.save("quote-nudge-report.pdf");
@@ -260,7 +248,7 @@ export default function QuoteNudgePage() {
           <CardContent className="pt-6 flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Credits</p>
-              <p className="text-2xl font-bold">{remaining} / {MAX_CREDITS}</p>
+              <p className="text-2xl font-bold">{credits}</p>
             </div>
             <CreditCard className="h-5 w-5 text-muted-foreground" />
           </CardContent>
@@ -321,7 +309,7 @@ export default function QuoteNudgePage() {
           <DialogFooter>
             <Button
               onClick={handleSubmitQuote}
-              disabled={sending}
+              disabled={sending || credits <= 0}
             >
               <Send className="h-4 w-4 mr-1" />
               {sending ? "Sending…" : "Send Quote"}
@@ -331,11 +319,9 @@ export default function QuoteNudgePage() {
       </Dialog>
 
       {/* Credits Exhausted — Upgrade Popup */}
-      <UpgradePopup
+      <CreditPopup
         open={showCreditModal}
         onOpenChange={setShowCreditModal}
-        title="Credits Exhausted"
-        message={"You just used your free 3 messages.\nYou\u2019ve already seen how Vintico helps you recover business.\nUnlock more messages and full tools to grow faster."}
       />
 
       <Card>
@@ -354,10 +340,10 @@ export default function QuoteNudgePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Client</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Premium</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Follow-up</TableHead>
+                  <TableHead>Date</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -365,10 +351,10 @@ export default function QuoteNudgePage() {
                 {quotes.map((q) => (
                   <TableRow key={q.id}>
                     <TableCell className="font-medium">
-                      {q.clientName}
+                      {q.customer_name}
                     </TableCell>
-                    <TableCell>{q.product}</TableCell>
-                    <TableCell>${q.premium}</TableCell>
+                    <TableCell>{q.phone}</TableCell>
+                    <TableCell>${q.amount}</TableCell>
                     <TableCell>
                       <Badge
                         variant={
@@ -382,23 +368,23 @@ export default function QuoteNudgePage() {
                         {q.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{q.followUpDate || "—"}</TableCell>
+                    <TableCell>{new Date(q.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>
                       {q.status === "pending" && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          disabled={remaining <= 0}
+                          disabled={credits <= 0}
                           onClick={() => {
-                            if (remaining <= 0) {
+                            if (credits <= 0) {
                               setShowCreditModal(true);
                               return;
                             }
                             setForm({
-                              customerName: q.clientName,
-                              phone: (q as unknown as Record<string, string>).phone || "",
-                              amount: String(q.premium),
-                              message: buildDefaultMessage(q.clientName, String(q.premium)),
+                              customerName: q.customer_name,
+                              phone: q.phone,
+                              amount: String(q.amount),
+                              message: buildDefaultMessage(q.customer_name, String(q.amount)),
                             });
                             setShowForm(true);
                           }}

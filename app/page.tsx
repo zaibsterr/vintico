@@ -804,7 +804,7 @@ export default function LandingPage() {
             </Link>
           </div>
           <p className="mt-5 text-xs text-muted-foreground">
-            No credit card required · Free 14-day trial · Cancel anytime
+            No credit card required · Free Credits · With Sign Up
           </p>
         </div>
       </section>
