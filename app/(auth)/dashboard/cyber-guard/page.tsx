@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSupabase } from "@/lib/useSupabase";
+import { useAuth } from "@clerk/nextjs";
 import { ShieldAlert, KeyRound, Copy, RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import CyberUpgradePopup from "@/components/common/CyberUpgradePopup";
 import PDFExportButton from "@/components/common/PDFExportButton";
 import { toast } from "sonner";
-import UpgradePopup from "@/components/common/UpgradePopup";
+import { getUserProfile, UserProfile } from "@/lib/user-profile";
+import { createCyberReport, getUserCyberReports, CyberReport as CyberReportType } from "@/lib/cyber-reports";
+import { logActivity } from "@/lib/activity";
 
 // ── Password Generator ─────────────────────────────────────────
 const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -21,7 +24,7 @@ const SPECIAL = "!@#$%^&*()_+-=[]{}|;:,.<>?";
 const ALL_CHARS = UPPER + LOWER + DIGITS + SPECIAL;
 
 function generatePassword(): string {
-  const len = 12 + Math.floor(Math.random() * 5); // 12–16
+  const len = 12 + Math.floor(Math.random() * 5); // 12–16 chars
   const mandatory = [
     UPPER[Math.floor(Math.random() * UPPER.length)],
     LOWER[Math.floor(Math.random() * LOWER.length)],
@@ -39,28 +42,31 @@ function generatePassword(): string {
   return chars.join("");
 }
 
-// ── Strength Analysis ──────────────────────────────────────────
+// ── Strength Analysis (0-100) ──────────────────────────────────
 type StrengthLevel = "Weak" | "Medium" | "Strong";
 
 function analyzeStrength(pw: string): { level: StrengthLevel; score: number } {
   let score = 0;
-  if (pw.length >= 8) score += 20;
-  if (pw.length >= 12) score += 15;
-  if (pw.length >= 16) score += 10;
-  if (/[A-Z]/.test(pw)) score += 15;
-  if (/[a-z]/.test(pw)) score += 10;
-  if (/[0-9]/.test(pw)) score += 15;
-  if (/[^A-Za-z0-9]/.test(pw)) score += 15;
+  
+  // Length scoring
+  if (pw.length > 12) score += 30;
+  
+  // Character type scoring
+  if (/[A-Z]/.test(pw)) score += 20;
+  if (/[0-9]/.test(pw)) score += 20;
+  if (/[^A-Za-z0-9]/.test(pw)) score += 30;
+  
   score = Math.min(score, 100);
+  
   const level: StrengthLevel = score >= 70 ? "Strong" : score >= 40 ? "Medium" : "Weak";
   return { level, score };
 }
 
 function strengthColor(level: StrengthLevel): string {
   switch (level) {
-    case "Strong": return "#10B981";
-    case "Medium": return "#F59E0B";
-    case "Weak": return "#EF4444";
+    case "Strong": return "#10B981"; // Green
+    case "Medium": return "#F59E0B"; // Yellow
+    case "Weak": return "#EF4444";   // Red
   }
 }
 
@@ -69,19 +75,12 @@ function maskPassword(pw: string): string {
   return pw.slice(0, 2) + "•".repeat(pw.length - 4) + pw.slice(-2);
 }
 
-// ── Types ──────────────────────────────────────────────────────
-interface CyberReport {
-  id: string;
-  content: string;
-  score: number;
-  strengthLevel: StrengthLevel;
-  createdAt: string;
-}
-
 export default function CyberGuardPage() {
-  const { getDb, userId } = useSupabase();
-  const [history, setHistory] = useState<CyberReport[]>([]);
+  const { userId, getToken } = useAuth();
+  const [history, setHistory] = useState<CyberReportType[]>([]);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
   const [generatedPw, setGeneratedPw] = useState("");
   const [analyzeInput, setAnalyzeInput] = useState("");
   const [currentResult, setCurrentResult] = useState<{
@@ -91,58 +90,71 @@ export default function CyberGuardPage() {
   } | null>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  const fetchHistory = useCallback(async () => {
+  const FREE_REPORT_LIMIT = 3;
+
+  const fetchUserProfile = useCallback(async () => {
+    if (!userId) return;
+    
     try {
-      const db = await getDb();
-      if (!db) return;
-      const { data } = await db
-        .from("cyber_reports")
-        .select("*")
-        .eq("type", "password")
-        .order("created_at", { ascending: false });
-      setHistory(
-        (data ?? []).map((r: Record<string, unknown>) => {
-          const content = r.content as string;
-          const score = (r.score as number) ?? 0;
-          const level: StrengthLevel =
-            score >= 70 ? "Strong" : score >= 40 ? "Medium" : "Weak";
-          return {
-            id: r.id as string,
-            content,
-            score,
-            strengthLevel: level,
-            createdAt: r.created_at as string,
-          };
-        })
-      );
-    } catch {
-      /* table may not exist yet */
+      const token = await getToken();
+      if (!token) return;
+      
+      const profile = await getUserProfile(token, userId);
+      setUserProfile(profile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  }, [userId, getToken]);
+
+  const fetchHistory = useCallback(async () => {
+    if (!userId) return;
+    
+    try {
+      const token = await getToken();
+      if (!token) return;
+      
+      const historyData = await getUserCyberReports(token, userId);
+      setHistory(historyData);
+    } catch (error) {
+      console.error('Error fetching history:', error);
     } finally {
       setLoading(false);
     }
-  }, [getDb]);
+  }, [userId, getToken]);
 
   useEffect(() => {
+    fetchUserProfile();
     fetchHistory();
-  }, [fetchHistory]);
+  }, [fetchUserProfile, fetchHistory]);
 
   const saveReport = async (password: string, score: number) => {
+    if (!userId) return;
+    
     try {
-      const db = await getDb();
-      if (!db) return;
-      await db.from("cyber_reports").insert({
-        user_id: userId,
-        type: "password",
-        content: password,
-        score,
-      });
-      fetchHistory();
-    } catch {
+      const token = await getToken();
+      if (!token) return;
+      
+      const report = await createCyberReport(token, userId, "password", password, score);
+      
+      if (report) {
+        // ACTIVITY LOG
+        await logActivity(token, userId, "Generated Security Report");
+        fetchHistory();
+      }
+    } catch (error) {
+      console.error('Error saving report:', error);
       toast.error("Failed to generate report");
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGeneratePassword = async () => {
+    // ACCESS CONTROL: Check free user limit
+    if (userProfile?.plan === 'free' && history.length >= FREE_REPORT_LIMIT) {
+      setShowUpgrade(true);
+      return;
+    }
+
+    setProcessing(true);
     try {
       const pw = generatePassword();
       const { level, score } = analyzeStrength(pw);
@@ -150,23 +162,38 @@ export default function CyberGuardPage() {
       setCurrentResult({ password: pw, level, score });
       await saveReport(pw, score);
       toast.success("Password generated successfully");
-    } catch {
-      toast.error("Failed to generate report");
+    } catch (error) {
+      console.error('Error generating password:', error);
+      toast.error("Failed to generate password");
+    } finally {
+      setProcessing(false);
     }
   };
 
-  const handleAnalyze = async () => {
+  const handleCheckStrength = async () => {
+    // Error handling: Empty password
     if (!analyzeInput.trim()) {
-      toast.error("Please enter a password to analyze");
+      toast.error("👉 Please enter a password");
       return;
     }
+
+    // ACCESS CONTROL: Check free user limit
+    if (userProfile?.plan === 'free' && history.length >= FREE_REPORT_LIMIT) {
+      setShowUpgrade(true);
+      return;
+    }
+
+    setProcessing(true);
     try {
       const { level, score } = analyzeStrength(analyzeInput.trim());
       setCurrentResult({ password: analyzeInput.trim(), level, score });
       await saveReport(analyzeInput.trim(), score);
       toast.success("Password analyzed successfully");
-    } catch {
-      toast.error("Failed to generate report");
+    } catch (error) {
+      console.error('Error analyzing password:', error);
+      toast.error("Failed to analyze password");
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -184,23 +211,25 @@ export default function CyberGuardPage() {
     await import("jspdf-autotable");
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text("Cyber Guard — Security Report", 14, 20);
+    doc.text("👉 Cyber Security Report", 14, 20);
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
     (doc as unknown as Record<string, Function>).autoTable({
       startY: 35,
-      head: [["Password", "Strength", "Score", "Date"]],
+      head: [["Password", "Score", "Date"]],
       body: history.map((r) => [
         maskPassword(r.content),
-        r.strengthLevel,
-        `${r.score}%`,
-        new Date(r.createdAt).toLocaleDateString(),
+        `${r.score}/100`,
+        new Date(r.created_at).toLocaleDateString(),
       ]),
     });
-    doc.save("cyber-guard-security-report.pdf");
+    doc.save("cyber-security-report.pdf");
   };
 
   const latestScore = currentResult?.score ?? (history.length > 0 ? history[0].score : 0);
+  const getStrengthLevel = (score: number): StrengthLevel => {
+    return score >= 70 ? "Strong" : score >= 40 ? "Medium" : "Weak";
+  };
 
   return (
     <div className="space-y-6">
@@ -222,7 +251,7 @@ export default function CyberGuardPage() {
         <Card>
           <CardContent className="pt-6 text-center">
             <p className="text-sm text-muted-foreground">Security Score</p>
-            <p className="text-3xl font-bold">{latestScore}%</p>
+            <p className="text-3xl font-bold">{latestScore}/100</p>
           </CardContent>
         </Card>
         <Card>
@@ -240,11 +269,11 @@ export default function CyberGuardPage() {
                 color: currentResult
                   ? strengthColor(currentResult.level)
                   : history.length > 0
-                  ? strengthColor(history[0].strengthLevel)
+                  ? strengthColor(getStrengthLevel(history[0].score ?? 0))
                   : "#6B7280",
               }}
             >
-              {currentResult?.level ?? (history.length > 0 ? history[0].strengthLevel : "—")}
+              {currentResult?.level ?? (history.length > 0 ? getStrengthLevel(history[0].score ?? 0) : "—")}
             </p>
           </CardContent>
         </Card>
@@ -253,11 +282,11 @@ export default function CyberGuardPage() {
       {/* Password Generator */}
       <Card>
         <CardHeader>
-          <CardTitle>Generate Secure Password</CardTitle>
+          <CardTitle>🔹 Option 1: Generate Secure Password</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button onClick={handleGenerate}>
-            <RefreshCw className="h-4 w-4 mr-1" /> Generate Password
+          <Button onClick={handleGeneratePassword} disabled={processing}>
+            <RefreshCw className="h-4 w-4 mr-1" /> 👉 Generate Secure Password
           </Button>
           {generatedPw && (
             <div className="flex items-center gap-2">
@@ -279,7 +308,7 @@ export default function CyberGuardPage() {
       {/* Analyze Password */}
       <Card>
         <CardHeader>
-          <CardTitle>Analyze Password Strength</CardTitle>
+          <CardTitle>🔹 Option 2: Analyze Password</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -291,8 +320,8 @@ export default function CyberGuardPage() {
               onChange={(e) => setAnalyzeInput(e.target.value)}
             />
           </div>
-          <Button onClick={handleAnalyze}>
-            <KeyRound className="h-4 w-4 mr-1" /> Analyze
+          <Button onClick={handleCheckStrength} disabled={processing}>
+            <KeyRound className="h-4 w-4 mr-1" /> 👉 Check Strength
           </Button>
         </CardContent>
       </Card>
@@ -301,7 +330,7 @@ export default function CyberGuardPage() {
       {currentResult && (
         <Card>
           <CardHeader>
-            <CardTitle>Result</CardTitle>
+            <CardTitle>🔹 Output (PRO UI)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
@@ -309,17 +338,17 @@ export default function CyberGuardPage() {
               <code className="text-sm font-mono">{maskPassword(currentResult.password)}</code>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Strength</span>
+              <span className="text-sm text-muted-foreground">Strength Score</span>
+              <span className="font-bold">{currentResult.score}/100</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Label</span>
               <Badge
                 className="text-white"
                 style={{ backgroundColor: strengthColor(currentResult.level) }}
               >
                 {currentResult.level}
               </Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Score</span>
-              <span className="font-bold">{currentResult.score}%</span>
             </div>
             {/* Strength bar */}
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
@@ -339,16 +368,12 @@ export default function CyberGuardPage() {
 
       {/* History + PDF Export */}
       <div className="flex gap-2">
-        <PDFExportButton
-          onClick={() => setShowUpgrade(true)}
-          label="Export Security Report"
-          disabled={history.length === 0}
-        />
+        <PDFExportButton onClick={exportPDF} disabled={history.length === 0} />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>History ({history.length})</CardTitle>
+          <CardTitle>🔹 History Section</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -367,16 +392,16 @@ export default function CyberGuardPage() {
                   <div className="space-y-1">
                     <code className="text-sm font-mono">{maskPassword(r.content)}</code>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(r.createdAt).toLocaleDateString()}
+                      {new Date(r.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium">{r.score}%</span>
+                    <span className="text-sm font-medium">{r.score}/100</span>
                     <Badge
                       className="text-white"
-                      style={{ backgroundColor: strengthColor(r.strengthLevel) }}
+                      style={{ backgroundColor: strengthColor(getStrengthLevel(r.score ?? 0)) }}
                     >
-                      {r.strengthLevel}
+                      {getStrengthLevel(r.score ?? 0)}
                     </Badge>
                   </div>
                 </div>
@@ -385,11 +410,9 @@ export default function CyberGuardPage() {
           )}
         </CardContent>
       </Card>
-      <UpgradePopup
+      <CyberUpgradePopup
         open={showUpgrade}
         onOpenChange={setShowUpgrade}
-        title="Feature Restricted"
-        message={"Advanced security report export is a paid feature.\nUpgrade your plan to unlock full reporting and advanced tools."}
       />
     </div>
   );

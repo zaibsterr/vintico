@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSupabase } from "@/lib/useSupabase";
+import { useAuth } from "@clerk/nextjs";
 import { CalendarDays, Plus, Check, X } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,11 +13,13 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import PDFExportButton from "@/components/common/PDFExportButton";
+import LeaveUpgradePopup from "@/components/common/LeaveUpgradePopup";
 import { toast } from "sonner";
-import UpgradePopup from "@/components/common/UpgradePopup";
-import type { LeaveRequest } from "@/types";
+import { getUserProfile, UserProfile } from "@/lib/user-profile";
+import { createLeaveRequest, getUserLeaveRequests, checkOverlappingLeave, LeaveRequest } from "@/lib/leave-requests";
+import { logActivity } from "@/lib/activity";
 
-const FREE_LEAVE_LIMIT = 3;
+const FREE_LEAVE_LIMIT = 2;
 
 type LeaveType = "sick" | "casual" | "paid";
 
@@ -28,115 +30,147 @@ function datesOverlap(
 }
 
 export default function LeaveGuardPage() {
-  const { getDb, userId } = useSupabase();
+  const { userId, getToken } = useAuth();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [form, setForm] = useState({
-    employeeName: "",
-    leaveType: "sick" as LeaveType,
-    startDate: "",
-    endDate: "",
+    employee_name: "",
+    leave_type: "sick" as LeaveType,
+    start_date: "",
+    end_date: "",
     reason: "",
   });
 
-  const fetchData = useCallback(async () => {
+  const fetchUserProfile = useCallback(async () => {
+    if (!userId) return;
+    
     try {
-      const db = await getDb();
-      if (!db) return;
-      const { data } = await db
-        .from("leave_requests")
-        .select("*")
-        .order("created_at", { ascending: false });
-      setRequests(
-        (data ?? []).map((r: Record<string, unknown>) => ({
-          id: r.id as string,
-          employeeName: r.employee_name as string,
-          leaveType: r.leave_type as LeaveRequest["leaveType"],
-          startDate: r.start_date as string,
-          endDate: r.end_date as string,
-          status: r.status as LeaveRequest["status"],
-          reason: r.reason as string | undefined,
-        }))
-      );
-    } catch {
-      /* table may not exist yet */
+      const token = await getToken();
+      if (!token) return;
+      
+      const profile = await getUserProfile(token, userId);
+      setUserProfile(profile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  }, [userId, getToken]);
+
+  const fetchRequests = useCallback(async () => {
+    if (!userId) return;
+    
+    try {
+      const token = await getToken();
+      if (!token) return;
+      
+      const requestsData = await getUserLeaveRequests(token, userId);
+      setRequests(requestsData);
+    } catch (error) {
+      console.error('Error fetching requests:', error);
     } finally {
       setLoading(false);
     }
-  }, [getDb]);
+  }, [userId, getToken]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchUserProfile();
+    fetchRequests();
+  }, [fetchUserProfile, fetchRequests]);
 
-  const handleSubmit = async () => {
-    if (requests.length >= FREE_LEAVE_LIMIT) {
+  const handleSubmitLeave = async () => {
+    // Early return if not authenticated
+    if (!userId) {
+      toast.error("Authentication required");
+      return;
+    }
+
+    // Error handling: Check empty fields
+    if (!form.employee_name.trim()) {
+      toast.error("👉 Employee name is required");
+      return;
+    }
+    if (!form.leave_type) {
+      toast.error("👉 Leave type is required");
+      return;
+    }
+    if (!form.start_date) {
+      toast.error("👉 Start date is required");
+      return;
+    }
+    if (!form.end_date) {
+      toast.error("👉 End date is required");
+      return;
+    }
+    
+    // Error handling: Invalid date
+    if (form.end_date < form.start_date) {
+      toast.error("👉 End date must be on or after start date");
+      return;
+    }
+
+    // ACCESS CONTROL: Check free user limit
+    if (userProfile?.plan === 'free' && requests.length >= FREE_LEAVE_LIMIT) {
       setShowUpgrade(true);
-      return;
-    }
-    if (!form.employeeName.trim()) {
-      toast.error("Employee name is required");
-      return;
-    }
-    if (!form.startDate) {
-      toast.error("Start date is required");
-      return;
-    }
-    if (!form.endDate) {
-      toast.error("End date is required");
-      return;
-    }
-    if (form.endDate < form.startDate) {
-      toast.error("End date must be on or after start date");
       return;
     }
 
     setSubmitting(true);
     try {
-      const db = await getDb();
-      if (!db) return;
-
-      // ── Overlap detection ──
-      const { data: existing } = await db
-        .from("leave_requests")
-        .select("start_date, end_date, status")
-        .eq("user_id", userId)
-        .eq("employee_name", form.employeeName.trim())
-        .in("status", ["pending", "approved"]);
-
-      const hasOverlap = (existing ?? []).some(
-        (r: Record<string, unknown>) =>
-          datesOverlap(
-            form.startDate,
-            form.endDate,
-            r.start_date as string,
-            r.end_date as string
-          )
-      );
-
-      if (hasOverlap) {
-        toast.error("Leave dates overlap with an existing request");
+      const token = await getToken();
+      if (!token) {
+        toast.error("Authentication error");
         return;
       }
 
-      await db.from("leave_requests").insert({
-        user_id: userId,
-        employee_name: form.employeeName.trim(),
-        leave_type: form.leaveType,
-        start_date: form.startDate,
-        end_date: form.endDate,
-        status: "pending",
-        reason: form.reason.trim() || null,
-      });
+      // OVERLAP DETECTION
+      const hasOverlap = await checkOverlappingLeave(
+        token, 
+        userId, 
+        form.start_date || "", 
+        form.end_date || ""
+      );
 
-      toast.success("Leave request submitted successfully");
-      setForm({ employeeName: "", leaveType: "sick", startDate: "", endDate: "", reason: "" });
-      setShowForm(false);
-      fetchData();
-    } catch {
+      if (hasOverlap) {
+        toast.error("👉 Leave dates overlap with an existing request");
+        setSubmitting(false);
+        return;
+      }
+
+      // SAVE TO SUPABASE
+      const leaveRequest = await createLeaveRequest(
+        token,
+        userId,
+        form.employee_name.trim(),
+        form.leave_type,
+        form.start_date || "",
+        form.end_date || "",
+        form.reason.trim()
+      );
+
+      if (leaveRequest) {
+        // ACTIVITY LOG
+        await logActivity(token, userId, "Leave Request Submitted");
+        
+        toast.success("Leave request submitted successfully");
+        
+        // Reset form
+        setForm({
+          employee_name: "",
+          leave_type: "sick",
+          start_date: "",
+          end_date: "",
+          reason: "",
+        });
+        setShowForm(false);
+        fetchRequests();
+      } else {
+        toast.error("Failed to submit leave request");
+      }
+    } catch (error) {
+      console.error('Error submitting leave request:', error);
       toast.error("Failed to submit leave request");
     } finally {
       setSubmitting(false);
@@ -145,11 +179,18 @@ export default function LeaveGuardPage() {
 
   const updateStatus = async (id: string, status: "approved" | "rejected") => {
     try {
-      const db = await getDb();
-      if (!db) return;
-      await db.from("leave_requests").update({ status }).eq("id", id);
+      const token = await getToken();
+      if (!token) return;
+      
+      const supabase = await import("@supabase/supabase-js").then(m => m.createClient);
+      const client = supabase(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      
+      await client.from("leave_requests").update({ status }).eq("id", id);
       toast.success(`Leave request ${status}`);
-      fetchData();
+      fetchRequests();
     } catch {
       toast.error("Failed to update status");
     }
@@ -160,19 +201,18 @@ export default function LeaveGuardPage() {
     await import("jspdf-autotable");
     const doc = new jsPDF();
     doc.setFontSize(16);
-    doc.text("Leave Guard — Leave Report", 14, 20);
+    doc.text("👉 Leave Report", 14, 20);
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
     (doc as unknown as Record<string, Function>).autoTable({
       startY: 35,
-      head: [["Employee", "Type", "Start", "End", "Status", "Reason"]],
+      head: [["Employee", "Type", "Start", "End", "Status"]],
       body: requests.map((r) => [
-        r.employeeName,
-        r.leaveType,
-        r.startDate,
-        r.endDate,
+        r.employee_name,
+        r.leave_type,
+        r.start_date,
+        r.end_date,
         r.status,
-        r.reason || "—",
       ]),
     });
     doc.save("leave-guard-report.pdf");
@@ -193,7 +233,7 @@ export default function LeaveGuardPage() {
 
       <div className="flex gap-2">
         <Button size="sm" onClick={() => {
-          if (requests.length >= FREE_LEAVE_LIMIT) {
+          if (userProfile?.plan === 'free' && requests.length >= FREE_LEAVE_LIMIT) {
             setShowUpgrade(true);
             return;
           }
@@ -211,16 +251,16 @@ export default function LeaveGuardPage() {
               <Label>Employee Name *</Label>
               <Input
                 placeholder="John Doe"
-                value={form.employeeName}
-                onChange={(e) => setForm({ ...form, employeeName: e.target.value })}
+                value={form.employee_name}
+                onChange={(e) => setForm({ ...form, employee_name: e.target.value })}
               />
             </div>
             <div>
               <Label>Leave Type</Label>
               <select
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                value={form.leaveType}
-                onChange={(e) => setForm({ ...form, leaveType: e.target.value as LeaveType })}
+                value={form.leave_type}
+                onChange={(e) => setForm({ ...form, leave_type: e.target.value as LeaveType })}
               >
                 <option value="sick">Sick</option>
                 <option value="casual">Casual</option>
@@ -231,17 +271,17 @@ export default function LeaveGuardPage() {
               <Label>Start Date *</Label>
               <Input
                 type="date"
-                value={form.startDate}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                value={form.start_date}
+                onChange={(e) => setForm({ ...form, start_date: e.target.value })}
               />
             </div>
             <div>
               <Label>End Date *</Label>
               <Input
                 type="date"
-                min={form.startDate || undefined}
-                value={form.endDate}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                min={form.start_date || undefined}
+                value={form.end_date}
+                onChange={(e) => setForm({ ...form, end_date: e.target.value })}
               />
             </div>
             <div className="sm:col-span-2">
@@ -253,8 +293,8 @@ export default function LeaveGuardPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Button onClick={handleSubmit} disabled={submitting}>
-                {submitting ? "Submitting…" : "Submit Request"}
+              <Button onClick={handleSubmitLeave} disabled={submitting}>
+                {submitting ? "Submitting…" : "👉 Submit Leave"}
               </Button>
             </div>
           </CardContent>
@@ -286,17 +326,17 @@ export default function LeaveGuardPage() {
               <TableBody>
                 {requests.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.employeeName}</TableCell>
-                    <TableCell className="capitalize">{r.leaveType}</TableCell>
-                    <TableCell>{r.startDate} → {r.endDate}</TableCell>
+                    <TableCell className="font-medium">{r.employee_name}</TableCell>
+                    <TableCell className="capitalize">{r.leave_type}</TableCell>
+                    <TableCell>{r.start_date} → {r.end_date}</TableCell>
                     <TableCell>
                       <Badge
                         className={
                           r.status === "approved"
-                            ? "bg-[#10B981] text-white hover:bg-[#10B981]/90"
+                            ? "bg-green-500 text-white hover:bg-green-600"
                             : r.status === "rejected"
-                            ? "bg-[#EF4444] text-white hover:bg-[#EF4444]/90"
-                            : "bg-[#F59E0B] text-white hover:bg-[#F59E0B]/90"
+                            ? "bg-red-500 text-white hover:bg-red-600"
+                            : "bg-yellow-500 text-white hover:bg-yellow-600"
                         }
                       >
                         {r.status}
@@ -329,11 +369,9 @@ export default function LeaveGuardPage() {
           )}
         </CardContent>
       </Card>
-      <UpgradePopup
+      <LeaveUpgradePopup
         open={showUpgrade}
         onOpenChange={setShowUpgrade}
-        title="Leave Limit Reached"
-        message={"You\u2019ve used all your free leave requests.\nUpgrade your plan to submit unlimited leave requests and unlock full tools."}
       />
     </div>
   );

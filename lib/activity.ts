@@ -60,3 +60,10 @@ export async function getUserActivities(token: string, userId: string, limit: nu
     return [];
   }
 }
+
+/**
+ * Alias for getUserActivities to match expected function name
+ */
+export async function getActivityLogs(token: string, userId: string): Promise<ActivityLog[]> {
+  return getUserActivities(token, userId, 50);
+}

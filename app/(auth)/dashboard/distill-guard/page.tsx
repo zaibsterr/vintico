@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSupabase } from "@/lib/useSupabase";
+import { useAuth } from "@clerk/nextjs";
 import { ShieldCheck, Sparkles } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,17 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import PDFExportButton from "@/components/common/PDFExportButton";
 import { toast } from "sonner";
+import { createDistillation, getUserDistillations, Distillation } from "@/lib/distillations";
+import { logActivity } from "@/lib/activity";
 
-// ── Lightweight extractive summarization ───────────────────────
-const BUSINESS_KEYWORDS = [
-  "revenue", "profit", "growth", "risk", "compliance", "strategy",
-  "customer", "market", "performance", "target", "deadline", "budget",
-  "report", "analysis", "critical", "important", "significant",
-  "increase", "decrease", "impact", "result", "outcome", "key",
-  "decision", "recommend", "action", "priority", "objective",
-];
-
-function splitSentences(text: string): string[] {
+// ── Clean Extractive Summary Logic ───────────────────────
+function splitIntoSentences(text: string): string[] {
   return text
     .replace(/([.!?])\s+/g, "$1|")
     .split("|")
@@ -29,35 +23,24 @@ function splitSentences(text: string): string[] {
     .filter((s) => s.length > 10);
 }
 
-function scoreSentence(sentence: string, index: number, total: number): number {
-  const lower = sentence.toLowerCase();
-  let score = 0;
-  if (index === 0) score += 3;
-  if (index === total - 1) score += 1;
-  if (index < 3) score += 2;
-  for (const kw of BUSINESS_KEYWORDS) {
-    if (lower.includes(kw)) score += 1;
+function generateCleanSummary(text: string): string {
+  const sentences = splitIntoSentences(text);
+  
+  // If text is short, return as-is
+  if (sentences.length <= 3) {
+    return sentences.join(" ").replace(/\s+/g, " ").trim();
   }
-  const wordCount = sentence.split(/\s+/).length;
-  if (wordCount >= 8 && wordCount <= 35) score += 1;
-  return score;
-}
-
-function extractSummary(text: string): string[] {
-  const sentences = splitSentences(text);
-  if (sentences.length <= 6) return sentences;
-
-  const scored = sentences.map((s, i) => ({
-    sentence: s,
-    index: i,
-    score: scoreSentence(s, i, sentences.length),
-  }));
-
-  scored.sort((a, b) => b.score - a.score);
-  const top = scored.slice(0, Math.min(6, Math.max(4, Math.ceil(sentences.length * 0.3))));
-  top.sort((a, b) => a.index - b.index);
-
-  return top.map((t) => t.sentence);
+  
+  // Pick first 3-5 important sentences
+  const selectedSentences = sentences.slice(0, Math.min(5, Math.max(3, Math.ceil(sentences.length * 0.3))));
+  
+  // Clean and join sentences
+  const summary = selectedSentences
+    .join(" ")
+    .replace(/\s+/g, " ") // Remove extra spaces
+    .trim();
+  
+  return summary;
 }
 
 // ── Types ──────────────────────────────────────────────────────
@@ -69,70 +52,70 @@ interface DistillEntry {
 }
 
 export default function DistillGuardPage() {
-  const { getDb, userId } = useSupabase();
-  const [history, setHistory] = useState<DistillEntry[]>([]);
+  const { userId, getToken } = useAuth();
+  const [history, setHistory] = useState<Distillation[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [inputText, setInputText] = useState("");
-  const [currentSummary, setCurrentSummary] = useState<string[] | null>(null);
+  const [currentSummary, setCurrentSummary] = useState<string | null>(null);
 
   const fetchHistory = useCallback(async () => {
+    if (!userId) return;
+    
+    setLoading(true);
     try {
-      const db = await getDb();
-      if (!db) return;
-      const { data } = await db
-        .from("distillations")
-        .select("*")
-        .order("created_at", { ascending: false });
-      setHistory(
-        (data ?? []).map((r: Record<string, unknown>) => ({
-          id: r.id as string,
-          originalText: r.original_text as string,
-          summary: r.summary as string,
-          createdAt: r.created_at as string,
-        }))
-      );
-    } catch {
-      /* table may not exist yet */
+      const token = await getToken();
+      if (!token) return;
+      
+      const historyData = await getUserDistillations(token, userId);
+      setHistory(historyData);
+    } catch (error) {
+      console.error('Error fetching history:', error);
     } finally {
       setLoading(false);
     }
-  }, [getDb]);
+  }, [userId, getToken]);
 
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
 
-  const handleDistill = async () => {
+  const handleGenerateSummary = async () => {
     const trimmed = inputText.trim();
+    
+    // Error handling: Check for empty input
     if (!trimmed) {
-      toast.error("Please enter some text to distill");
-      return;
-    }
-    if (trimmed.length < 50) {
-      toast.error("Text must be at least 50 characters long");
+      toast.error("👉 Please enter text");
       return;
     }
 
     setProcessing(true);
     try {
-      const sentences = extractSummary(trimmed);
-      const summaryText = sentences.join(" ");
+      // Generate clean summary
+      const summary = generateCleanSummary(trimmed);
+      setCurrentSummary(summary);
 
-      setCurrentSummary(sentences);
-
-      const db = await getDb();
-      if (db) {
-        await db.from("distillations").insert({
-          user_id: userId,
-          original_text: trimmed,
-          summary: summaryText,
-        });
-        fetchHistory();
+      // Save to Supabase
+      if (userId) {
+        const token = await getToken();
+        if (token) {
+          const distillation = await createDistillation(token, userId, trimmed, summary);
+          
+          if (distillation) {
+            // Log activity
+            await logActivity(token, userId, "Generated Summary");
+            
+            // Refresh history
+            fetchHistory();
+            
+            toast.success("Summary generated successfully");
+          } else {
+            console.error("Failed to save distillation");
+          }
+        }
       }
-
-      toast.success("Summary generated successfully");
-    } catch {
+    } catch (error) {
+      console.error('Error generating summary:', error);
       toast.error("Failed to generate summary");
     } finally {
       setProcessing(false);
@@ -145,50 +128,23 @@ export default function DistillGuardPage() {
     const doc = new jsPDF();
 
     doc.setFontSize(18);
-    doc.text("Distillation Report", 14, 20);
+    doc.text("👉 Distill Guard Report", 14, 20);
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
 
-    let yPos = 38;
+    const rows = history.map((entry) => [
+      entry.original_text.length > 50 ? entry.original_text.slice(0, 50) + "..." : entry.original_text,
+      entry.summary.length > 50 ? entry.summary.slice(0, 50) + "..." : entry.summary,
+      new Date(entry.created_at).toLocaleDateString()
+    ]);
 
-    history.forEach((entry, idx) => {
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text(`Entry ${idx + 1} — ${new Date(entry.createdAt).toLocaleDateString()}`, 14, yPos);
-      yPos += 8;
-
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text("Original Text:", 14, yPos);
-      yPos += 5;
-
-      const preview = entry.originalText.length > 300
-        ? entry.originalText.slice(0, 300) + "…"
-        : entry.originalText;
-      const origLines = doc.splitTextToSize(preview, 180);
-      doc.text(origLines, 14, yPos);
-      yPos += origLines.length * 4 + 4;
-
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      doc.setFont("helvetica", "bold");
-      doc.text("Summary:", 14, yPos);
-      yPos += 5;
-      doc.setFont("helvetica", "normal");
-      const sumLines = doc.splitTextToSize(entry.summary, 180);
-      doc.text(sumLines, 14, yPos);
-      yPos += sumLines.length * 4 + 10;
+    (doc as unknown as Record<string, Function>).autoTable({
+      startY: 35,
+      head: [["Original Text", "Summary", "Date"]],
+      body: rows,
     });
 
-    doc.save("distillation-report.pdf");
+    doc.save("distill-guard-report.pdf");
   };
 
   return (
@@ -213,14 +169,14 @@ export default function DistillGuardPage() {
       {/* Input Area */}
       <Card>
         <CardHeader>
-          <CardTitle>New Distillation</CardTitle>
+          <CardTitle>👉 Generate Summary</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label>Paste your text below *</Label>
+            <Label>Original Text *</Label>
             <Textarea
               rows={8}
-              placeholder="Paste a long document, article, or report here (min. 50 characters)…"
+              placeholder="Enter your text here to generate a clean summary..."
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
             />
@@ -228,9 +184,9 @@ export default function DistillGuardPage() {
               {inputText.length} characters
             </p>
           </div>
-          <Button onClick={handleDistill} disabled={processing}>
+          <Button onClick={handleGenerateSummary} disabled={processing}>
             <Sparkles className="h-4 w-4 mr-1" />
-            {processing ? "Processing…" : "Distill"}
+            {processing ? "Processing…" : "👉 Generate Summary"}
           </Button>
         </CardContent>
       </Card>
@@ -239,14 +195,12 @@ export default function DistillGuardPage() {
       {currentSummary && (
         <Card>
           <CardHeader>
-            <CardTitle>Distilled Summary</CardTitle>
+            <CardTitle>👉 Summary</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {currentSummary.map((sentence, idx) => (
-              <p key={idx} className={idx === 0 ? "font-semibold" : ""}>
-                {sentence}
-              </p>
-            ))}
+          <CardContent>
+            <p className="text-sm leading-relaxed">
+              {currentSummary}
+            </p>
           </CardContent>
         </Card>
       )}
@@ -272,15 +226,15 @@ export default function DistillGuardPage() {
                   <CardContent className="pt-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <Badge variant="secondary">
-                        {new Date(entry.createdAt).toLocaleDateString()}
+                        {new Date(entry.created_at).toLocaleDateString()}
                       </Badge>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1">Original (preview)</p>
+                      <p className="text-xs text-muted-foreground mb-1">Original Text (preview)</p>
                       <p className="text-sm">
-                        {entry.originalText.length > 200
-                          ? entry.originalText.slice(0, 200) + "…"
-                          : entry.originalText}
+                        {entry.original_text.length > 200
+                          ? entry.original_text.slice(0, 200) + "…"
+                          : entry.original_text}
                       </p>
                     </div>
                     <div>

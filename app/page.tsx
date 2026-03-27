@@ -80,7 +80,7 @@ const services = [
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen w-full max-w-full overflow-x-hidden">
       {/* ─── Nav ─────────────────────────────────────────────────── */}
       <Header />
 
@@ -103,10 +103,10 @@ export default function LandingPage() {
           />
         </div>
 
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32 lg:py-40">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32 lg:py-40 w-full overflow-x-hidden">
           <div className="grid gap-16 lg:grid-cols-2 lg:items-center">
             {/* Left — Copy */}
-            <div className="max-w-xl">
+            <div className="max-w-xl w-full">
               <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground mb-6">
                 <Zap className="h-3 w-3 text-amber-500" />
                 Intelligent Business Suite
@@ -123,14 +123,14 @@ export default function LandingPage() {
                 tracking, cybersecurity alerts, and real-time analytics into one
                 elegant dashboard - so your team can focus on what matters.
               </p>
-              <div className="mt-8 flex flex-wrap gap-4">
+              <div className="mt-8 flex flex-col sm:flex-row gap-4">
                 <Link href="/dashboard">
-                  <Button size="lg" className="gap-2">
+                  <Button size="lg" className="gap-2 w-full sm:w-auto">
                     Launch Dashboard
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Button variant="outline" size="lg" className="gap-2">
+                <Button variant="outline" size="lg" className="gap-2 w-full sm:w-auto">
                   <Lock className="h-4 w-4" />
                   Enterprise-Grade Security
                 </Button>
@@ -138,7 +138,7 @@ export default function LandingPage() {
             </div>
 
             {/* Right — Illustrated dashboard mockup (pure CSS/SVG) */}
-            <div className="relative mx-auto w-full max-w-lg lg:max-w-none">
+            <div className="relative w-full max-w-lg lg:max-w-none">
               {/* Main card */}
               <div className="relative rounded-2xl border bg-card p-3 sm:p-6 shadow-2xl shadow-black/5">
                 {/* Fake top bar */}
@@ -150,7 +150,7 @@ export default function LandingPage() {
                 </div>
 
                 {/* Stat row */}
-                <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-4 sm:mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-3 mb-4 sm:mb-6">
                   {[
                     { label: "Quotes Sent", value: "1,284", trend: "+12%" },
                     { label: "Compliance", value: "98.7%", trend: "+2.1%" },
@@ -231,7 +231,7 @@ export default function LandingPage() {
           <div className="absolute -bottom-32 left-0 h-[400px] w-[400px] rounded-full bg-gradient-to-tr from-emerald-400/[0.04] to-transparent blur-3xl" />
         </div>
 
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-28">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-28 w-full overflow-x-hidden">
           {/* Header */}
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground mb-5">
@@ -247,7 +247,7 @@ export default function LandingPage() {
           </div>
 
           {/* Top row — 3 cards */}
-          <div className="grid gap-5 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-5 sm:mb-6">
+          <div className="grid gap-5 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-5 sm:mb-6 w-full">
             {services.slice(0, 3).map((s) => {
               const Icon = s.icon;
               return (
@@ -300,7 +300,7 @@ export default function LandingPage() {
           </div>
 
           {/* Bottom row — 2 cards centered */}
-          <div className="grid gap-5 sm:gap-6 sm:grid-cols-2 max-w-3xl mx-auto">
+          <div className="grid gap-5 sm:gap-6 grid-cols-1 md:grid-cols-2 max-w-3xl mx-auto w-full">
             {services.slice(3).map((s) => {
               const Icon = s.icon;
               return (
@@ -355,14 +355,14 @@ export default function LandingPage() {
       </section>
 
       {/* ─── Partner Scroll Strip ──────────────────────────────────── */}
-      <section className="bg-black overflow-hidden">
+      <section className="bg-black overflow-hidden w-full">
         <style>{`
           @keyframes partnerScroll {
             0% { transform: translateX(-50%); }
             100% { transform: translateX(0); }
           }
         `}</style>
-        <div className="py-8 sm:py-10">
+        <div className="py-8 sm:py-10 w-full overflow-x-hidden">
           <div
             className="flex w-max items-center"
             style={{ animation: "partnerScroll 35s linear infinite" }}
@@ -409,7 +409,7 @@ export default function LandingPage() {
           .pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
           .fill-bar { animation: fillBar 1.5s ease-out forwards; }
         `}</style>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-14 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-14 sm:py-24 w-full overflow-x-hidden">
           <div className="text-center mb-14 sm:mb-16">
             <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground mb-5">
               <Zap className="h-3 w-3 text-amber-500" />
@@ -423,7 +423,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid gap-6 sm:gap-8 sm:grid-cols-3 relative">
+          <div className="grid gap-6 sm:gap-8 grid-cols-1 md:grid-cols-3 relative w-full">
             {/* Connector line (desktop) */}
             <div className="hidden sm:block absolute top-[88px] left-[16.67%] right-[16.67%] h-[2px]">
               <div className="h-full w-full bg-gradient-to-r from-blue-400/30 via-violet-400/30 to-emerald-400/30 rounded-full" />
@@ -618,7 +618,7 @@ export default function LandingPage() {
           <div className="absolute -bottom-32 right-1/4 h-[400px] w-[400px] rounded-full bg-gradient-to-tr from-emerald-400/[0.05] to-transparent blur-3xl" />
         </div>
 
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-28">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-28 w-full overflow-x-hidden">
           {/* Header */}
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground mb-5">
