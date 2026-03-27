@@ -1,6 +1,5 @@
 "use client";
 
-import type { Metadata } from "next";
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { ShieldCheck, Sparkles } from "lucide-react";
@@ -51,11 +50,6 @@ interface DistillEntry {
   summary: string;
   createdAt: string;
 }
-
-export const metadata: Metadata = {
-  title: "Distill Guard Text Summarization | Vintico Digital Hub",
-  description: "Summarize text and manage content history with Distill Guard dashboard tool. Professional text analysis and secure storage.",
-};
 
 export default function DistillGuardPage() {
   const { userId, getToken } = useAuth();

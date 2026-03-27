@@ -1,6 +1,5 @@
 "use client";
 
-import type { Metadata } from "next";
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { ShieldAlert, KeyRound, Copy, RefreshCw } from "lucide-react";
@@ -75,11 +74,6 @@ function maskPassword(pw: string): string {
   if (pw.length <= 4) return "****";
   return pw.slice(0, 2) + "•".repeat(pw.length - 4) + pw.slice(-2);
 }
-
-export const metadata: Metadata = {
-  title: "Cyber Guard Password Security Analysis | Vintico Digital Hub",
-  description: "Generate secure passwords and analyze security vulnerabilities with Cyber Guard dashboard tool. Professional password analysis and security reporting.",
-};
 
 export default function CyberGuardPage() {
   const { userId, getToken } = useAuth();

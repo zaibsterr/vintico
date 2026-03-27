@@ -1,6 +1,5 @@
 "use client";
 
-import type { Metadata } from "next";
 import {
   Zap,
   Rocket,
@@ -119,11 +118,6 @@ const creditPacks = [
     url: "https://buy.stripe.com/4gMdRb2rFfGUg5LeLR1Fe05",
   },
 ];
-
-export const metadata: Metadata = {
-  title: "Vintico Digital Hub Pricing Flexible Plans & Credits",
-  description: "Explore Vintico Digital Hub plans to get credits and access unlimited digital problem solving services. Choose Starter, Growth, or Pro to fit your needs.",
-};
 
 export default function PricingPage() {
   return (

@@ -1,6 +1,5 @@
 "use client";
 
-import type { Metadata } from "next";
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { FileText, Plus, Send, CreditCard } from "lucide-react";
@@ -36,11 +35,6 @@ import { logActivity } from "@/lib/activity";
 function buildDefaultMessage(name: string, amount: string) {
   return `Hi ${name || "[Customer]"}, here is your quote for $${amount || "0"}. Please review and reply to confirm. Thank you!`;
 }
-
-export const metadata: Metadata = {
-  title: "Quote Nudge Automated Follow Up | Vintico Digital Hub",
-  description: "Generate motivational quotes and automated follow up messages with Quote Nudge dashboard tool. Professional quote management and SMS notifications.",
-};
 
 export default function QuoteNudgePage() {
   const { userId, getToken } = useAuth();
