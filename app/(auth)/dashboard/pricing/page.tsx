@@ -1,5 +1,6 @@
 "use client";
 
+import type { Metadata } from "next";
 import {
   Zap,
   Rocket,
@@ -24,9 +25,10 @@ const plans = [
     iconBg: "bg-blue-500/10",
     borderColor: "",
     highlight: false,
-    badge: null,
+    badge: "3 Free Credits on Signup",
     benefits: [
       "100 monthly credits",
+      "3 free credits on signup",
       "Quote Nudge SMS sending",
       "Leave Guard management",
       "Basic Vintico Pulse view",
@@ -48,6 +50,7 @@ const plans = [
     badge: "Most Popular",
     benefits: [
       "500 monthly credits",
+      "3 free credits on signup",
       "All Starter features",
       "Cyber Guard full reports & export",
       "Vintico Pulse full export",
@@ -68,9 +71,10 @@ const plans = [
     iconBg: "bg-amber-500/10",
     borderColor: "",
     highlight: false,
-    badge: null,
+    badge: "Best Value",
     benefits: [
       "2,000 monthly credits",
+      "3 free credits on signup",
       "All Growth features",
       "Unlimited leave requests",
       "Unlimited distillations",
@@ -86,7 +90,7 @@ const creditPacks = [
   {
     name: "Credits Pack 500",
     credits: 500,
-    price: "$29",
+    price: "$7",
     period: " one-time",
     icon: Package,
     iconColor: "text-emerald-500",
@@ -101,7 +105,7 @@ const creditPacks = [
   {
     name: "Credits Pack 2000",
     credits: 2000,
-    price: "$99",
+    price: "$25",
     period: " one-time",
     icon: Boxes,
     iconColor: "text-orange-500",
@@ -115,6 +119,11 @@ const creditPacks = [
     url: "https://buy.stripe.com/4gMdRb2rFfGUg5LeLR1Fe05",
   },
 ];
+
+export const metadata: Metadata = {
+  title: "Vintico Digital Hub Pricing Flexible Plans & Credits",
+  description: "Explore Vintico Digital Hub plans to get credits and access unlimited digital problem solving services. Choose Starter, Growth, or Pro to fit your needs.",
+};
 
 export default function PricingPage() {
   return (

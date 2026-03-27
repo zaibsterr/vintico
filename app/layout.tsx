@@ -16,9 +16,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vintico Digital Hub",
+  title: "Vintico Digital Hub – Solve Any Digital Problem in Minutes",
   description:
-    "Vintico unifies quote management, compliance monitoring, leave tracking, cybersecurity alerts, and business analytics into one powerful dashboard.",
+    "Vintico Digital Hub helps you solve digital problems across multiple services instantly. Get solutions fast without wasting time.",
 };
 
 export default function RootLayout({

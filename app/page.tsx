@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   FileText,
   ShieldCheck,
@@ -19,6 +20,12 @@ import { Button } from "@/components/ui/button";
 import Header from "@/components/layout/Header";
 import AnimatedStats from "@/components/common/AnimatedStats";
 import SmartNotifications from "@/components/common/SmartNotifications";
+import AIAssistant from "@/components/common/AIAssistant";
+
+export const metadata: Metadata = {
+  title: "Vintico Digital Hub Solve Any Digital Problem Instantly",
+  description: "Vintico Digital Hub provides instant digital problem solving across multiple services. Efficient, professional, and fast solutions for every user.",
+};
 
 const services = [
   {
@@ -109,30 +116,28 @@ export default function LandingPage() {
             <div className="max-w-xl w-full">
               <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground mb-6">
                 <Zap className="h-3 w-3 text-amber-500" />
-                Intelligent Business Suite
+                Digital Problem Solving Platform
               </div>
               <h1 className="text-3xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                One platform.
+                Vintico
                 <br />
                 <span className="bg-gradient-to-r from-blue-600 via-violet-600 to-emerald-500 bg-clip-text text-transparent">
-                  Five superpowers.
+                  Digital Hub
                 </span>
               </h1>
               <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-                Vintico unifies quote management, compliance monitoring, leave
-                tracking, cybersecurity alerts, and real-time analytics into one
-                elegant dashboard - so your team can focus on what matters.
+                Bring any digital problem, and our platform solves it in minutes no time wasted.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-4">
                 <Link href="/dashboard">
                   <Button size="lg" className="gap-2 w-full sm:w-auto">
-                    Launch Dashboard
+                    Get Started
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
                 <Button variant="outline" size="lg" className="gap-2 w-full sm:w-auto">
                   <Lock className="h-4 w-4" />
-                  Enterprise-Grade Security
+                  Explore Our Services
                 </Button>
               </div>
             </div>
@@ -236,13 +241,13 @@ export default function LandingPage() {
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground mb-5">
               <Zap className="h-3 w-3 text-amber-500" />
-              Modular by Design
+              Comprehensive Solutions
             </div>
             <h2 className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
-              Everything your business needs
+              Solve any digital problem instantly
             </h2>
             <p className="mt-3 text-muted-foreground max-w-xl mx-auto leading-relaxed">
-              Five specialised modules, one unified platform. Each one built to solve a real problem — together they&apos;re unstoppable.
+              Vintico Digital Hub provides unlimited solutions for any digital challenge. Each service built to solve real problems fast.
             </p>
           </div>
 
@@ -413,13 +418,13 @@ export default function LandingPage() {
           <div className="text-center mb-14 sm:mb-16">
             <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground mb-5">
               <Zap className="h-3 w-3 text-amber-500" />
-              Simple Setup
+              Quick Start
             </div>
             <h2 className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
-              Up and running in minutes
+              Solve problems in minutes
             </h2>
             <p className="mt-3 text-muted-foreground max-w-lg mx-auto">
-              No complex onboarding. Three simple steps to transform your workflow.
+              Have a digital problem? Bring it to Vintico Digital Hub solved in minutes.
             </p>
           </div>
 
@@ -828,6 +833,9 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* ─── AI Assistant Widget ───────────────────────────────────── */}
+      <AIAssistant />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import type { Metadata } from "next";
 import { useEffect, useState, useCallback } from "react";
 import { useSupabase } from "@/lib/useSupabase";
 import {
@@ -48,6 +49,11 @@ interface KPIs {
   totalCyber: number;
   revenueProtected: number;
 }
+
+export const metadata: Metadata = {
+  title: "Vintico Pulse Productivity Analytics | Vintico Digital Hub",
+  description: "Analyze productivity scores and track energy levels with Vintico Pulse dashboard tool. Professional analytics and trend reporting.",
+};
 
 export default function VinticoPulsePage() {
   const { getDb } = useSupabase();

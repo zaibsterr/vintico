@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id TEXT NOT NULL,
   action TEXT NOT NULL,
+  metadata JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

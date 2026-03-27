@@ -1,5 +1,6 @@
 "use client";
 
+import type { Metadata } from "next";
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { CalendarDays, Plus, Check, X } from "lucide-react";
@@ -28,6 +29,11 @@ function datesOverlap(
 ): boolean {
   return aStart <= bEnd && bStart <= aEnd;
 }
+
+export const metadata: Metadata = {
+  title: "Leave Guard Secure Leave Requests | Vintico Digital Hub",
+  description: "Submit secure leave requests and manage team availability with Leave Guard dashboard tool. Professional leave management and overlap detection.",
+};
 
 export default function LeaveGuardPage() {
   const { userId, getToken } = useAuth();
