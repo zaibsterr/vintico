@@ -194,10 +194,10 @@ const AIAssistant = () => {
         <Button
           onClick={() => setIsOpen(true)}
           size="lg"
-          className="relative gap-2 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 shadow-lg hover:shadow-xl transition-all duration-300 rounded-full"
+          className="relative gap-1 md:gap-2 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 shadow-lg hover:shadow-xl transition-all duration-300 rounded-full px-3 md:px-4 py-2"
         >
-          <MessageCircle className="h-5 w-5" />
-          <span className="hidden sm:inline">AI Assistant</span>
+          <MessageCircle className="h-4 w-4 md:h-5 md:w-5" />
+          <span className="hidden sm:inline text-xs md:text-sm">AI Assistant</span>
           {!isOnline && (
             <Badge variant="destructive" className="absolute -top-2 -right-2 h-3 w-3 p-0" />
           )}
@@ -207,14 +207,14 @@ const AIAssistant = () => {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-full max-w-sm sm:max-w-md">
+    <div className="fixed bottom-4 right-4 left-4 sm:left-auto sm:right-4 z-50 w-full sm:w-auto sm:max-w-md max-w-sm">
       <Card className="shadow-2xl border-0 bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
         {/* Header */}
-        <CardHeader className="flex flex-row items-center justify-between p-4 border-b bg-gradient-to-r from-blue-600 to-violet-600 text-white rounded-t-lg">
+        <CardHeader className="flex flex-row items-center justify-between p-3 md:p-4 border-b bg-gradient-to-r from-blue-600 to-violet-600 text-white rounded-t-lg">
           <div className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
+            <Bot className="h-4 w-4 md:h-5 md:w-5" />
             <div>
-              <h3 className="font-semibold">Vintico AI Assistant</h3>
+              <h3 className="font-semibold text-sm md:text-base">Vintico AI Assistant</h3>
               <p className="text-xs opacity-90">
                 {isOnline ? "Online" : "Offline - Limited functionality"}
               </p>
@@ -244,13 +244,13 @@ const AIAssistant = () => {
           <>
             {/* Messages */}
             <CardContent className="p-0">
-              <ScrollArea className="h-96 p-4">
-                <div className="space-y-4">
+              <ScrollArea className="h-80 md:h-96 p-3 md:p-4">
+                <div className="space-y-3 md:space-y-4">
                   {messages.length === 0 && (
-                    <div className="text-center text-muted-foreground py-8">
-                      <Bot className="h-12 w-12 mx-auto mb-4 text-blue-600" />
-                      <h4 className="font-semibold mb-2">Welcome to Vintico AI Assistant!</h4>
-                      <p className="text-sm">
+                    <div className="text-center text-muted-foreground py-6 md:py-8">
+                      <Bot className="h-10 w-10 md:h-12 md:w-12 mx-auto mb-3 md:mb-4 text-blue-600" />
+                      <h4 className="font-semibold mb-2 text-sm md:text-base">Welcome to Vintico AI Assistant!</h4>
+                      <p className="text-xs md:text-sm">
                         Hi, how can I help you today? I can explain Vintico Digital Hub features and dashboard tools for instant digital problem solving.
                       </p>
                     </div>
@@ -267,13 +267,13 @@ const AIAssistant = () => {
                         </div>
                       )}
                       <div
-                        className={`max-w-[80%] rounded-lg p-3 ${
+                        className={`max-w-[85%] md:max-w-[80%] rounded-lg p-2 md:p-3 ${
                           message.sender === "user"
                             ? "bg-gradient-to-r from-blue-600 to-violet-600 text-white"
                             : "bg-muted"
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-line">{message.text}</p>
+                        <p className="text-xs md:text-sm whitespace-pre-line">{message.text}</p>
                         <p className="text-xs opacity-70 mt-1">
                           {message.timestamp.toLocaleTimeString()}
                         </p>
@@ -306,7 +306,7 @@ const AIAssistant = () => {
             </CardContent>
 
             {/* Input */}
-            <div className="p-4 border-t">
+            <div className="p-3 md:p-4 border-t">
               <div className="flex gap-2">
                 <Input
                   value={inputValue}
@@ -320,7 +320,7 @@ const AIAssistant = () => {
                       : "Ask about Vintico (sign in for personalized help)..."
                   }
                   disabled={!isOnline}
-                  className="flex-1"
+                  className="flex-1 text-sm"
                 />
                 <Button
                   onClick={handleSendMessage}

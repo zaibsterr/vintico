@@ -1,405 +1,326 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useAuth } from "@clerk/nextjs";
-import { FileText, Plus, Send, CreditCard } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
+import {
+  MessageSquare,
+  Plus,
+  Download,
+  Send,
+  Clock,
+  CheckCircle,
+  DollarSign,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import PDFExportButton from "@/components/common/PDFExportButton";
-import CreditPopup from "@/components/common/CreditPopup";
-import { toast } from "sonner";
-import { useCredits } from "@/hooks/useCredits";
-import { createQuote, getUserQuotes, Quote } from "@/lib/quotes";
-import { logActivity } from "@/lib/activity";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
-function buildDefaultMessage(name: string, amount: string) {
-  return `Hi ${name || "[Customer]"}, here is your quote for $${amount || "0"}. Please review and reply to confirm. Thank you!`;
-}
+const mockQuotes = [
+  {
+    id: 1,
+    client: "Jerry",
+    phone: "+12896551429",
+    amount: "$70",
+    status: "Sent",
+    date: "3/26/2026",
+  },
+  {
+    id: 2,
+    client: "Sarah",
+    phone: "+15551234567",
+    amount: "$150",
+    status: "Pending",
+    date: "3/25/2026",
+  },
+  {
+    id: 3,
+    client: "Mike",
+    phone: "+18889997777",
+    amount: "$95",
+    status: "Won",
+    date: "3/24/2026",
+  },
+  {
+    id: 4,
+    client: "Emily",
+    phone: "+12223334444",
+    amount: "$200",
+    status: "Sent",
+    date: "3/23/2026",
+  },
+  {
+    id: 5,
+    client: "David",
+    phone: "+14445556666",
+    amount: "$85",
+    status: "Pending",
+    date: "3/22/2026",
+  },
+];
 
-export default function QuoteNudgePage() {
-  const { userId, getToken } = useAuth();
-  const { credits, loading: creditsLoading, checkCredits, useCredit, refreshCredits } = useCredits();
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [showCreditModal, setShowCreditModal] = useState(false);
-  const [form, setForm] = useState({
+export default function QuoteNudgeDashboard() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState({
     customerName: "",
-    phone: "",
-    amount: "",
+    customerPhone: "",
+    quoteAmount: "",
     message: "",
   });
 
-  const fetchQuotes = useCallback(async () => {
-    if (!userId) return;
-    
-    try {
-      const token = await getToken();
-      if (!token) return;
-      
-      const quotesData = await getUserQuotes(token, userId);
-      setQuotes(quotesData);
-    } catch (error) {
-      console.error('Error fetching quotes:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [userId, getToken]);
-
-  useEffect(() => {
-    fetchQuotes();
-  }, [fetchQuotes]);
-
-  const updateFormField = (field: string, value: string) => {
-    const next = { ...form, [field]: value };
-    if (field === "customerName" || field === "amount") {
-      const name = field === "customerName" ? value : form.customerName;
-      const amt = field === "amount" ? value : form.amount;
-      next.message = buildDefaultMessage(name, amt);
-    }
-    setForm(next);
-  };
-
-  const resetForm = () => {
-    setForm({ customerName: "", phone: "", amount: "", message: "" });
-  };
-
-  const handleSubmitQuote = async () => {
-    if (!form.phone.trim()) {
-      toast.error("Phone number is required");
-      return;
-    }
-    if (!form.customerName.trim()) {
-      toast.error("Customer name is required");
-      return;
-    }
-    if (!form.amount.trim()) {
-      toast.error("Quote amount is required");
-      return;
-    }
-
-    if (!userId) {
-      toast.error("User not authenticated");
-      return;
-    }
-
-    // Step 1: Check Credits (STRICT)
-    const canProceed = await checkCredits();
-    if (!canProceed) {
-      setShowCreditModal(true);
-      return;
-    }
-
-    setSending(true);
-    try {
-      // Step 2: Send SMS using Twilio
-      const res = await fetch("/api/sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: form.phone.trim(),
-          message: form.message || buildDefaultMessage(form.customerName, form.amount),
-        }),
-      });
-
-      const result = await res.json();
-
-      // EDGE CASE: If Twilio fails, do NOT deduct credit
-      if (!res.ok) {
-        if (res.status === 402) {
-          setShowCreditModal(true);
-          return;
-        }
-        toast.error(result.error || "Failed to send SMS");
-        return;
-      }
-
-      // Step 3: Insert into quotes table
-      const token = await getToken();
-      if (!token) {
-        toast.error("Authentication error");
-        return;
-      }
-
-      const quote = await createQuote(
-        token,
-        userId,
-        form.customerName.trim(),
-        form.phone.trim(),
-        Number(form.amount),
-        form.message
-      );
-
-      if (!quote) {
-        toast.error("Failed to save quote");
-        return;
-      }
-
-      // Step 4: Deduct Credit
-      const creditDeducted = await useCredit();
-      if (!creditDeducted) {
-        console.error("Failed to deduct credit");
-      }
-
-      // Step 5: Log Activity
-      await logActivity(token, userId, "Quote SMS Sent");
-
-      toast.success("Quote sent successfully");
-
-      resetForm();
-      setShowForm(false);
-      fetchQuotes();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "SMS send failed";
-      toast.error(msg);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const sentCount = quotes.filter((q) => q.status === "sent").length;
-  const pendingCount = quotes.filter((q) => q.status === "pending").length;
-  const wonCount = quotes.filter((q) => q.status === "accepted").length;
-
-  const exportPDF = async () => {
-    const jsPDF = (await import("jspdf")).default;
-    await import("jspdf-autotable");
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Quote Nudge — Report", 14, 20);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
-
-    const rows = quotes.map((q) => [
-      q.customer_name,
-      "Insurance",
-      `$${q.amount}`,
-      q.status,
-      q.created_at,
-    ]);
-
-    (doc as unknown as Record<string, Function>).autoTable({
-      startY: 35,
-      head: [["Client", "Product", "Premium", "Status", "Date"]],
-      body: rows,
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log("Form submitted:", formData);
+    setIsModalOpen(false);
+    setFormData({
+      customerName: "",
+      customerPhone: "",
+      quoteAmount: "",
+      message: "",
     });
-    doc.save("quote-nudge-report.pdf");
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500">
-          <FileText className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Quote Nudge</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage, track, and follow up on insurance quotes.
-          </p>
-        </div>
-        <Badge variant="secondary" className="ml-auto">
-          Module Active
-        </Badge>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Quotes Sent</p>
-            <p className="text-2xl font-bold">{sentCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Pending</p>
-            <p className="text-2xl font-bold">{pendingCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Won</p>
-            <p className="text-2xl font-bold">{wonCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 flex items-center justify-between">
+    <div className="flex h-screen bg-gray-50">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Dashboard Header */}
+        <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-4 md:py-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <p className="text-sm text-muted-foreground">Credits</p>
-              <p className="text-2xl font-bold">{credits}</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">QuoteNudge</h1>
+              <p className="text-gray-600 mt-1 text-sm md:text-base">
+                Manage quotes, track follow-ups, and convert leads into paying clients.
+              </p>
             </div>
-            <CreditCard className="h-5 w-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
+            <div className="flex items-center">
+              <Badge className="bg-green-100 text-green-800 border-green-200 text-xs md:text-sm">
+                Module Active
+              </Badge>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto p-4 md:p-8">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
+            <Card className="bg-white border-gray-200 rounded-lg shadow-sm">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Quotes Sent</p>
+                    <p className="text-xl md:text-2xl font-bold text-gray-900 mt-1">47</p>
+                  </div>
+                  <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Send className="h-4 w-4 text-blue-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 rounded-lg shadow-sm">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Pending Follow-Ups</p>
+                    <p className="text-xl md:text-2xl font-bold text-gray-900 mt-1">12</p>
+                  </div>
+                  <div className="h-8 w-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                    <Clock className="h-4 w-4 text-amber-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 rounded-lg shadow-sm">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Deals Won</p>
+                    <p className="text-xl md:text-2xl font-bold text-gray-900 mt-1">23</p>
+                  </div>
+                  <div className="h-8 w-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 rounded-lg shadow-sm">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Credits Remaining</p>
+                    <p className="text-xl md:text-2xl font-bold text-gray-900 mt-1">850</p>
+                  </div>
+                  <div className="h-8 w-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <DollarSign className="h-4 w-4 text-purple-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 md:gap-4 mb-6 md:mb-8">
+            <Button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 md:px-6 py-2 flex items-center justify-center gap-2 text-sm md:text-base"
+            >
+              <Plus className="h-4 w-4" />
+              New Quote
+            </Button>
+            <Button
+              variant="outline"
+              className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg px-4 md:px-6 py-2 flex items-center justify-center gap-2 text-sm md:text-base"
+            >
+              <Download className="h-4 w-4" />
+              Export PDF
+            </Button>
+          </div>
+
+          {/* Quotes Table */}
+          <Card className="bg-white border-gray-200 rounded-lg shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900">Quotes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-medium text-gray-700">Client</th>
+                      <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-medium text-gray-700 hidden sm:table-cell">Phone</th>
+                      <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-medium text-gray-700">Amount</th>
+                      <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-medium text-gray-700">Status</th>
+                      <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-medium text-gray-700">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mockQuotes.map((quote) => (
+                      <tr key={quote.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-900">{quote.client}</td>
+                        <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 hidden sm:table-cell">{quote.phone}</td>
+                        <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-medium text-gray-900">{quote.amount}</td>
+                        <td className="py-2 md:py-3 px-2 md:px-4">
+                          <Badge
+                            variant={
+                              quote.status === "Won"
+                                ? "default"
+                                : quote.status === "Pending"
+                                ? "secondary"
+                                : "outline"
+                            }
+                            className={
+                              quote.status === "Won"
+                                ? "bg-green-100 text-green-800 border-green-200"
+                                : quote.status === "Pending"
+                                ? "bg-amber-100 text-amber-800 border-amber-200"
+                                : "bg-blue-100 text-blue-800 border-blue-200"
+                            }
+                          >
+                            {quote.status}
+                          </Badge>
+                        </td>
+                        <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600">{quote.date}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
       </div>
 
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => setShowForm(!showForm)}>
-          <Plus className="h-4 w-4 mr-1" /> New Quote
-        </Button>
-        <PDFExportButton onClick={exportPDF} disabled={quotes.length === 0} />
-      </div>
-
-      {/* Quote Form (inside a Dialog modal) */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent>
+      {/* Send Quote Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-md mx-4">
           <DialogHeader>
-            <DialogTitle>Send a Quote</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-base md:text-lg font-semibold text-gray-900">
+              Send a Quote
+            </DialogTitle>
+            <DialogDescription className="text-gray-600 text-sm md:text-base">
               Fill in the details below to send a quote via SMS.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label>Customer Name</Label>
-              <Input
-                placeholder="John Doe"
-                value={form.customerName}
-                onChange={(e) => updateFormField("customerName", e.target.value)}
+              <label className="text-sm font-medium text-gray-700">Customer Name</label>
+              <input
+                type="text"
+                required
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter customer name"
+                value={formData.customerName}
+                onChange={(e) => handleInputChange("customerName", e.target.value)}
               />
             </div>
+            
             <div>
-              <Label>Customer Phone Number *</Label>
-              <Input
+              <label className="text-sm font-medium text-gray-700">Customer Phone Number</label>
+              <input
+                type="tel"
+                required
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="+1234567890"
-                value={form.phone}
-                onChange={(e) => updateFormField("phone", e.target.value)}
+                value={formData.customerPhone}
+                onChange={(e) => handleInputChange("customerPhone", e.target.value)}
               />
             </div>
+            
             <div>
-              <Label>Quote Amount ($)</Label>
-              <Input
+              <label className="text-sm font-medium text-gray-700">Quote Amount ($)</label>
+              <input
                 type="number"
-                placeholder="500"
-                value={form.amount}
-                onChange={(e) => updateFormField("amount", e.target.value)}
+                required
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="0.00"
+                value={formData.quoteAmount}
+                onChange={(e) => handleInputChange("quoteAmount", e.target.value)}
               />
             </div>
+            
             <div>
-              <Label>Message</Label>
-              <Textarea
+              <label className="text-sm font-medium text-gray-700">Message</label>
+              <textarea
+                required
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 rows={4}
-                value={form.message}
-                onChange={(e) => setForm({ ...form, message: e.target.value })}
+                placeholder="Enter your quote message..."
+                value={formData.message}
+                onChange={(e) => handleInputChange("message", e.target.value)}
               />
             </div>
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={handleSubmitQuote}
-              disabled={sending || credits <= 0}
-            >
-              <Send className="h-4 w-4 mr-1" />
-              {sending ? "Sending…" : "Send Quote"}
-            </Button>
-          </DialogFooter>
+            
+            <div className="flex gap-3 pt-4">
+              <Button
+                type="submit"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 flex items-center justify-center gap-2 text-sm md:text-base"
+              >
+                <Send className="h-4 w-4" />
+                Send Quote
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsModalOpen(false)}
+                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg py-2 text-sm md:text-base"
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
-
-      {/* Credits Exhausted — Upgrade Popup */}
-      <CreditPopup
-        open={showCreditModal}
-        onOpenChange={setShowCreditModal}
-      />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Quotes ({quotes.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : quotes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No quotes yet. Click &quot;New Quote&quot; to create one.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {quotes.map((q) => (
-                  <TableRow key={q.id}>
-                    <TableCell className="font-medium">
-                      {q.customer_name}
-                    </TableCell>
-                    <TableCell>{q.phone}</TableCell>
-                    <TableCell>${q.amount}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          q.status === "accepted"
-                            ? "default"
-                            : q.status === "declined"
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {q.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{new Date(q.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {q.status === "pending" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={credits <= 0}
-                          onClick={() => {
-                            if (credits <= 0) {
-                              setShowCreditModal(true);
-                              return;
-                            }
-                            setForm({
-                              customerName: q.customer_name,
-                              phone: q.phone,
-                              amount: String(q.amount),
-                              message: buildDefaultMessage(q.customer_name, String(q.amount)),
-                            });
-                            setShowForm(true);
-                          }}
-                        >
-                          <Send className="h-3 w-3 mr-1" /> Nudge
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
