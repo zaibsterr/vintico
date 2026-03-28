@@ -25,7 +25,8 @@ import {
   Edit,
   Zap,
   RefreshCw,
-  Target
+  Target,
+  Plus
 } from "lucide-react";
 
 interface InactiveLead {
