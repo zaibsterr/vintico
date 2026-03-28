@@ -36,6 +36,41 @@ const services = [
     icon: "Activity",
     color: "bg-violet-500",
   },
+  {
+    name: "Contract Risk Scanner",
+    description: "Analyze contracts and detect hidden freelancer risks before starting projects.",
+    href: "/dashboard/contract-risk-scanner",
+    icon: "FileSearch",
+    color: "bg-orange-500",
+  },
+  {
+    name: "Invoice Recovery Automation",
+    description: "Automatically recover unpaid invoices with smart reminders and payment tracking.",
+    href: "/dashboard/invoice-recovery",
+    icon: "CreditCard",
+    color: "bg-pink-500",
+  },
+  {
+    name: "Late Payment Protection",
+    description: "Track overdue payments and enforce late fee protection rules automatically.",
+    href: "/dashboard/late-payment-protection",
+    icon: "AlertTriangle",
+    color: "bg-red-600",
+  },
+  {
+    name: "Tax Estimate Alerts",
+    description: "Estimate upcoming tax obligations and set aside money for quarterly payments.",
+    href: "/dashboard/tax-estimate-alerts",
+    icon: "Calculator",
+    color: "bg-indigo-500",
+  },
+  {
+    name: "Client Risk Score",
+    description: "Evaluate client reliability and project risk before accepting work.",
+    href: "/dashboard/client-risk-score",
+    icon: "UserSearch",
+    color: "bg-teal-500",
+  },
 ];
 
 export default function DashboardOverview() {

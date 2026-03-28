@@ -7,6 +7,11 @@ import {
   CalendarDays,
   ShieldAlert,
   Activity,
+  FileSearch,
+  CreditCard,
+  AlertTriangle,
+  Calculator,
+  UserSearch,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -18,6 +23,11 @@ const iconMap: Record<string, LucideIcon> = {
   CalendarDays,
   ShieldAlert,
   Activity,
+  FileSearch,
+  CreditCard,
+  AlertTriangle,
+  Calculator,
+  UserSearch,
 };
 
 interface ServiceCardProps {

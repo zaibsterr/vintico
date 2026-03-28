@@ -8,6 +8,11 @@ import {
   CalendarDays,
   ShieldAlert,
   Activity,
+  FileSearch,
+  CreditCard,
+  AlertTriangle,
+  Calculator,
+  UserSearch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
@@ -42,6 +47,36 @@ const services = [
     href: "/dashboard/vintico-pulse",
     icon: Activity,
     color: "text-violet-500",
+  },
+  {
+    name: "Contract Risk Scanner",
+    href: "/dashboard/contract-risk-scanner",
+    icon: FileSearch,
+    color: "text-orange-500",
+  },
+  {
+    name: "Invoice Recovery Automation",
+    href: "/dashboard/invoice-recovery",
+    icon: CreditCard,
+    color: "text-pink-500",
+  },
+  {
+    name: "Late Payment Protection",
+    href: "/dashboard/late-payment-protection",
+    icon: AlertTriangle,
+    color: "text-red-600",
+  },
+  {
+    name: "Tax Estimate Alerts",
+    href: "/dashboard/tax-estimate-alerts",
+    icon: Calculator,
+    color: "text-indigo-500",
+  },
+  {
+    name: "Client Risk Score",
+    href: "/dashboard/client-risk-score",
+    icon: UserSearch,
+    color: "text-teal-500",
   },
 ];
 
